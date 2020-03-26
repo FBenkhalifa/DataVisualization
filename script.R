@@ -31,9 +31,22 @@ mydata <- mydata %>% mutate_at(vars(-n), as.factor)
 mydata <- untable(df = mydata %>% select(-n), 
                   num = mydata %>% pull(n))
 
+# Retable for a quick check if n stays the same
+mydata %>% count(Class, Sex, Age, Survived, .drop = FALSE)
+
 # II Data exploration --------------------------------------------------------
-mydata %>% group_by(Sex, Survived) %>% summarize(Cases = sum(n)) %>% group_by()
-mydata %>% group_by(Sex, Survived) %>% tally()
+
+
+# Now distributions can easily be computed by choosing the variables of interest
+mydata %>% 
+  count(Class, Sex, .drop = FALSE) %>% 
+  group_by(Class) %>% 
+  mutate(freq_per_class = n/sum(n))
+
+mydata %>% 
+  count(Class, Sex, .drop = FALSE) %>% 
+  group_by(Sex) %>% 
+  mutate(freq_per_Sex = n/sum(n))
 
 # III Data visualization ------------------------------------------------------
 
