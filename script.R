@@ -22,7 +22,7 @@ library(broom)
 # I Data preparation -------------------------------------------------------------------------
 
 # Convert array to 2-dimensional format
-mydata <- Titanic %>% as_tibble()
+mydata <- Titanic %>% as_tibble() %>% print(n=50)
 
 # Convert all except n to factors which are easier to handle later on
 mydata <- mydata %>% mutate_at(vars(-n), as.factor) 
@@ -89,4 +89,26 @@ mydata %>%
 
 # III Data visualization ------------------------------------------------------
 
+# A Fit linear regression
+linear_reg <- 
+  mydata %>% 
+  # Convert target variable to numeric for linear regression
+  mutate_at("Survived", ~case_when(Survived == "No" ~ 0, 
+                                   Survived == "Yes" ~ 1)) %>%
+  # Run regression
+  lm(Survived ~ ., .)
 
+# Display coefficients and informations
+tidy(linear_reg)
+
+# Display summary statistics
+glance(linear_reg)
+
+# B Fit log regression
+log_reg <- glm(Survived ~ ., mydata, family = binomial(link = "logit"))
+
+# Display coefficients and informations
+tidy(linear_reg)
+
+# Display summary statistics
+glance(linear_reg)
