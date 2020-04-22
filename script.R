@@ -119,7 +119,7 @@ mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
   scale_y_continuous(labels = percent) +
   ylab("Survival Rate") +
   scale_fill_brewer(palette = "Set1") +
-  geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1.5) +
+  geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
   facet_wrap(~variable, scales = "free_x")
 
 
