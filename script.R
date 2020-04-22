@@ -112,17 +112,54 @@ survival_rate <- mydata %>%
   mutate(freq_per_class = n/sum(n))
 
 # Convert data to long format for facet plotting
-mydata_semi_long <- mydata %>% pivot_longer(-Survived, names_to = "variable", values_to = "attribute", names_repair = "universal")
+mydata_semi_long <- mydata %>% 
+  pivot_longer(-Survived, 
+               names_to = "variable", 
+               values_to = "attribute", 
+               names_repair = "universal") %>% 
+  mutate_if(is.character, as.factor)
+
+fct_counts <- mydata_semi_long %>%
+  group_by(variable) %>%
+  do(fct_count(.$attribute, prop = TRUE))
 
 mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
   geom_bar(position = "fill") +
   scale_y_continuous(labels = percent) +
   ylab("Survival Rate") +
+  theme(axis.text.x = element_text(angle=45, hjust=1))+
   scale_fill_brewer(palette = "Set1") +
   geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
-  facet_wrap(~variable, scales = "free_x")
+  geom_label(label = fct_counts$n, nudge_y = 1500) +
+  facet_wrap(~variable, scales = "free_y")
 
+ggplot(mpg, aes(x=class, y=drv)) + 
+  geom_count(aes(size=..prop..), colour="lightgrey") +
+  geom_count(aes(size=..prop.., group=class), colour="cornflowerblue")  +
+  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
+  coord_fixed() +
+  theme_minimal()
 
+ggplot(mydata, aes(x=Sex, y=Class)) + 
+  geom_count(aes(size=..prop..), colour="lightgrey") +
+  geom_count(aes(size=..prop.., group=Class), colour="cornflowerblue")  +
+  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
+  coord_fixed() +
+  theme_minimal()
+
+ggplot(mydata, aes(x=Sex, y=Age)) + 
+  geom_count(aes(size=..prop..), colour="lightgrey") +
+  geom_count(aes(size=..prop.., group=Age), colour="cornflowerblue")  +
+  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
+  coord_fixed() +
+  theme_minimal()
+
+ggplot(mydata, aes(x=Class, y=Age)) + 
+  geom_count(aes(size=..prop..), colour="lightgrey") +
+  geom_count(aes(size=..prop.., group=Age), colour="cornflowerblue")  +
+  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
+  coord_fixed() +
+  theme_minimal()
 
 # IV Model Fitting and evaluation ------------------------------------------------------
 
