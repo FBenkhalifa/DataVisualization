@@ -1,0 +1,111 @@
+---
+title: "Estimating the effect of luxury cabin on the chances to survive the sinking of the Titanic"
+author: "Florian Benkhalifa, Camilla Bischofberger, Max Röcker"
+date: "3 5 2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(datasets)
+# Data wrangling
+library(tidyverse)
+library(lubridate)
+library(reshape)
+
+# Data viz
+library(plotly)
+library(scales)
+library(ggthemes)
+library(cowplot)
+library(stargazer)
+library(skimr)
+library(ggmosaic)
+library(plot3D)
+
+# Data presentation
+library(knitr)
+
+# Data analysis
+library(tidymodels)
+library(broom)
+library(glmnet)
+```
+
+```{r}
+
+# Convert array to 2-dimensional format
+mydata <- Titanic %>% as_tibble() %>% print(n=50)
+
+# Convert all except n to factors which are easier to handle later on
+mydata <- mydata %>% mutate_at(vars(-n), as.factor) 
+
+# Untable the dbl which makes it easier to use with summarize functions
+mydata <- untable(df = mydata %>% select(-n), 
+                  num = mydata %>% pull(n))
+
+```
+
+## Introduction
+
+The purpose of this paper is to assess the effect of the economic status (class) of the cabine on the chances of survival as a passenger on the Titanic. The fate of the Titanic has captured the attention of the whole world. It is widely presumed that the people getting the few places in the limited number of lifeboats and surviving the cold waters of the North Atlantic were rather from the upper cabin classes than from lower classes. Therefore, ex ante, the effect seems to be clear – the lower the class of a passenger, the smaller the chances for survival. This inequality would constitute an appalling injustice and thus, necessitates a factual verification. Fortunately, we received passenger data from the British Board of Trade that enables us to assess this effect. 
+We perform a thorough analysis in the empirical framework of a linear regression. We find that the relationship between class and chances of survival is best described by XYXY. We conclude that it is likely that the effect on the survival rate might be a combination of several factors, with economic status of the cabine being a significant one (depends on data findings). The results of this study should inform our struggle for safe passages for everyone and workers rights worldwide. 
+
+
+## Data and descriptives
+
+The dataset “Titanic” contains information about the survival status of a person, gender, the economic class and the age of each passenger. All the variables are categorical, with only the economic class having four categories - the remaining are binary.
+In total there are $2201$ observations in the dataset. A simple summary statistic denoting the marginal distributions of the variables is illustrated in figure xxx. 
+In order to get a preliminary grasp of the relation between the regressors and the target variable, several stacked barplots are provided in Figure 1. They graphically indicate differences in the survival rate between multiple groups. The white dotted line marks the overall mean survivals and facilitates to detect conspicious groups.
+
+```{r cars}
+## A Plot data with target variable
+survival_rate <- mydata %>% 
+  count(Survived, .drop = FALSE) %>% 
+  mutate(freq_per_class = n/sum(n))
+
+# Convert data to long format for facet plotting
+mydata_semi_long <- mydata %>% 
+  pivot_longer(-Survived, 
+               names_to = "variable", 
+               values_to = "attribute", 
+               names_repair = "universal") %>% 
+  mutate_if(is.character, as.factor)
+
+fct_counts <- mydata_semi_long %>%
+  group_by(variable) %>%
+  do(fct_count(.$attribute, prop = TRUE))
+
+mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  ylab("Survival Rate") +
+  theme(axis.text.x = element_text(angle=45, hjust=1))+
+  scale_fill_brewer(palette = "Set1") +
+  geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
+  # geom_label(label = fct_counts$n, nudge_y = 1500) +
+  facet_wrap(~variable, scales = "free_x") +
+  theme_hc()
+```
+The graph underlines three provisional findings: 
+- Children had a higher chance to survive than adults, 
+- survival rate diminishes with economic class and 
+- females were more likely to survive the crash than males. 
+
+From a first glance the preliminary findings seem to be linked to traditional shipping conducts. Findings 1 and 3 mostly follow from the “Women and children first” policy which priorises the lives of women and children in life threatening situations. In turn it is not surprising that male passengers reveal a low survival rate of less than 20%. Finding (2) would lead into the direction of the presumption about inequality among the classes described in the introduction. Thus, validating finding 2 is of crucial interest in the next section.
+
+## Empirical strategy and results
+
+In this section we estimate the causal effect of the economic status of the cabine on the chances of survival. We start with the simplest form of logistic regression model applicable to the data which takes the form
+
+$$P(Surived = 1|x)= G(\beta_o + \beta_1Class1 + \beta_2Class2 + \beta_3Class3) + u$$ 
+where $i$ denotes the i-th individual and $\beta_0$, $\beta_1$, $\beta_2$ and $\beta_3$ are the unknown coefficients to be estimated. $u$ is the error of the regression and remains unobserved. Since the object of interest is a categorical variable, It has been preferable to first convert the data into dummy variables, since the magnitude of switching from Class 1 to Class 2, for instance, does not convey useful infromation; only ordinal information.This ensures that the beta coefficients are more flexible, since they are not bounded to increase in a linear way for every class. The base group in this model is the Class “Crew”, so the b1, b2 and b3 depict the increase or decrease of the survival probabilities in comparison with the base group which is contained in the intercept b0. The estimation results of this simple model are displayed in the first column of table X.
+Since the outcome variable is binary (only takes values 0 for dying and 1 for surviving), $E[Survival|X]$ gives us the probability of the passenger to survive, given certain realizations of the other variables. We condition on: $E[Survival|X]=P[Survival=1|x]$, which denotes the response probability for various values of $x$. We abstained from constructing this model via a linear relationship, as assumed by OLS, since for some range of the covariates the estimated conditional probability may fall outside of $[0,1]$. Clearly, such estimations violate the premise of probability functions. Further, a linear probability model implies that a ceteris paribus increase in $x_i$ always corresponds with a constant change of $P[Survival=1|x_i]$ regardless of the initial value of $x_i$. This also implies that we can get $P[Survival=1|x_i]$ greater or less than $[0,1]$ if we increase or decrease the dependent variable continually. Particularly when trying to estimate partial effects for extreme values of $x$, this should cause concerns.The effect of interest is captured in equation (1) by the beta coefficients which denote the increase of log odds when the survival probability of survival of a passenger belonging to lower class is compared to a higher. 
+
+Clearly this dataset does not deliver unbiased effects of the ecomomic classe. In order to extract the effect of class, we could think of a randomized experiment. Therefore, we would randomly pick 1000 people representative for passengers who prefer to travel by a liner. For instance, past reservations on different liners across the world could be pooled into a dataset, and 1000 people are randomly chosen and informed that they won a free a cruise in a lottery. Once they arrive on the liner, which has also been randomly chosen, they are randomly assigned to different cabin classes holding all other factors such as ship policy equal. To eventually test how the economic class affects the survival chance, the ship is directed towards 
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

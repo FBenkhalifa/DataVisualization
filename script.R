@@ -11,6 +11,8 @@ library(ggthemes)
 library(cowplot)
 library(stargazer)
 library(skimr)
+library(ggmosaic)
+library(plot3D)
 
 # Data presentation
 library(knitr)
@@ -18,7 +20,7 @@ library(knitr)
 # Data analysis
 library(tidymodels)
 library(broom)
-
+library(glmnet)
 
 # I Data preparation -------------------------------------------------------------------------
 
@@ -89,12 +91,23 @@ mydata %>%
 
 
 # III Data visualization ------------------------------------------------------
-who %>% pivot_longer(
-  cols = new_sp_m014:newrel_f65,
-  names_to = c("diagnosis", "gender", "age"),
-  names_pattern = "new_?(.*)_(.)(.*)",
-  values_to = "count"
-)
+
+
+data(Titanic)
+titanic <- as.data.frame(Titanic)
+titanic$Survived <- factor(titanic$Survived, levels=c("Yes", "No"))
+
+
+ggplot(data=titanic) +
+  geom_mosaic(aes(weight=Freq, x=product(Class), fill=Survived))
+# good practice: use the 'dependent' variable (or most important variable)
+# as fill variable
+
+ggplot(data=titanic) +
+  geom_mosaic(aes(weight=Freq, x=product(Class, Age), fill=Survived))
+
+ggplot(data=titanic) +
+  geom_mosaic(aes(weight=Freq, x=product(Class), conds=product(Age), fill=Survived))
 ## B Plot marginal distributions
 mydata_long <- mydata %>% pivot_longer(everything(), names_to = "variable", values_to = "attribute", names_repair = "universal")
 
@@ -130,8 +143,9 @@ mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
   theme(axis.text.x = element_text(angle=45, hjust=1))+
   scale_fill_brewer(palette = "Set1") +
   geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
-  geom_label(label = fct_counts$n, nudge_y = 1500) +
-  facet_wrap(~variable, scales = "free_y")
+  # geom_label(label = fct_counts$n, nudge_y = 1500) +
+  facet_wrap(~variable, scales = "free_x") +
+  theme_hc()
 
 ggplot(mpg, aes(x=class, y=drv)) + 
   geom_count(aes(size=..prop..), colour="lightgrey") +
@@ -161,6 +175,24 @@ ggplot(mydata, aes(x=Class, y=Age)) +
   coord_fixed() +
   theme_minimal()
 
+## C Heatmaps
+library(ggplot2)
+
+set.seed(1)
+dat <- data.frame(x = rnorm(1000), y = rnorm(1000))
+
+# plot
+p <- ggplot(dat, aes(x = x, y = y)) + geom_bin2d() 
+p
+# Get data - this includes counts and x,y coordinates 
+newdat <- ggplot_build(p)$data[[1]]
+
+# add in text labels
+p + geom_text(data=newdat, aes((xmin + xmax)/2, (ymin + ymax)/2, 
+                               label=count), col="white")
+mydata %>% ggplot(aes(x = Class, y = Class, fill = Survived)) +
+  geom_tile()
+
 # IV Model Fitting and evaluation ------------------------------------------------------
 
 # A Fit linear regression
@@ -174,20 +206,68 @@ tidy(linear_reg)
 glance(linear_reg)
 
 # B Fit log regression
-log_reg <- glm(Survived ~ ., mydata, family = binomial(link = "logit"))
+# Preprocess the data
+mydata <-
+  recipe(Survived ~ ., data = mydata) %>% 
+  step_dummy(all_predictors(), one_hot = TRUE) %>% 
+  step_interact(terms = ~ starts_with("Sex"):starts_with("Age")) %>% 
+  step_zv(all_predictors()) %>% 
+  prep() %>% 
+  juice() %>% 
+  mutate_at("Survived", ~case_when(Survived == "No" ~ 0,
+                                   Survived == "Yes" ~ 1))
+  
 
+log_reg_simple <- glm(Survived ~ ., mydata %>% select(Survived, starts_with("Class")), family = binomial(link = "logit"))
+log_reg_simple %>% pander
 # Display coefficients and informations and summary statistics 
-tidy(log_reg)
-glance(log_reg)
+tidy(log_reg_simple)
+glance(log_reg_simple) %>% pander
+
+log_reg_full <-  glm(Survived ~ ., mydata , family = binomial(link = "logit"))
+tidy(log_reg_full)
+glance(log_reg_full) %>% pander
+
+log_reg_full %>% pander
+# Lasso Regression --------------------------------------------------------
+
+# Define test and training sample
+split <- initial_split(mydata)
+train <- training(split)
+test <- testing(split)
+
+titanic_cv <- vfold_cv(train_data, v = 10, repeats = 1)
 
 
+y = train %>% select(Survived) %>% data.matrix() 
+x = train %>% select(-Survived)  %>% add_column(intercept = 1)  %>% data.matrix()
 
-# B Compute anova
+lasso <- cv.glmnet(y = y, 
+                   x = x, 
+                   family = "binomial", 
+                   alpha = 1,
+                   type.measure = "class",
+                   type.logistic = "Newton",
+                   nfolds = 10,
+                   penalty.factor=c(rep(0, 4), rep(1, ncol(x) - 4)))
 
-# Produce linear anova
-linear_anova <- anova(linear_reg)
-linear_anova %>% tidy
+lasso %>% tidy
+plot(lasso)
 
-# Produce log anova
-log_anova <- anova(log_reg)
-log_anova %>% tidy
+
+lambda <- 
+  lasso$glmnet.fit %>% 
+  tidy %>% 
+  filter(dev.ratio== max(dev.ratio)) %>% 
+  pull(lambda) %>% 
+  unique
+
+coefficients <- coef(lasso, s = lambda) 
+coefficients %>% tidy
+
+# 3 Extract the lambda fpr which lasso has chosen two predictors
+lambda_var <- lasso$glmnet.fit$lambda[lasso$glmnet.fit$df == 2]
+
+# 4 Get the coefficients chosen for the corresponding lasso
+
+
