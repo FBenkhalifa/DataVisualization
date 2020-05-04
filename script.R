@@ -147,17 +147,11 @@ mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
   facet_wrap(~variable, scales = "free_x") +
   theme_hc()
 
-ggplot(mpg, aes(x=class, y=drv)) + 
-  geom_count(aes(size=..prop..), colour="lightgrey") +
-  geom_count(aes(size=..prop.., group=class), colour="cornflowerblue")  +
-  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
-  coord_fixed() +
-  theme_minimal()
 
 ggplot(mydata, aes(x=Sex, y=Class)) + 
   geom_count(aes(size=..prop..), colour="lightgrey") +
   geom_count(aes(size=..prop.., group=Class), colour="cornflowerblue")  +
-  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
+  scale_size(range = c(0,10), breaks=seq(0,1,by=0.1)) +
   coord_fixed() +
   theme_minimal()
 
@@ -171,7 +165,7 @@ ggplot(mydata, aes(x=Sex, y=Age)) +
 ggplot(mydata, aes(x=Class, y=Age)) + 
   geom_count(aes(size=..prop..), colour="lightgrey") +
   geom_count(aes(size=..prop.., group=Age), colour="cornflowerblue")  +
-  scale_size(range = c(0,10), breaks=seq(0,1,by=0.2)) +
+  scale_size(range = c(0,20), breaks=seq(0,1,by=0.2)) +
   coord_fixed() +
   theme_minimal()
 
@@ -213,9 +207,9 @@ mydata <-
   step_interact(terms = ~ starts_with("Sex"):starts_with("Age")) %>% 
   step_zv(all_predictors()) %>% 
   prep() %>% 
-  juice() %>% 
-  mutate_at("Survived", ~case_when(Survived == "No" ~ 0,
-                                   Survived == "Yes" ~ 1))
+  juice() #%>% 
+  # mutate_at("Survived", ~case_when(Survived == "No" ~ 0,
+  #                                  Survived == "Yes" ~ 1))
   
 
 log_reg_simple <- glm(Survived ~ ., mydata %>% select(Survived, starts_with("Class")), family = binomial(link = "logit"))
