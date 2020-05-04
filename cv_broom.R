@@ -1,5 +1,6 @@
 library(rsample)
 library(combinat)
+library(furrr)
 ls(package:rsample)
 
 h <- vfold_cv(mydata, v = 10)
@@ -28,10 +29,14 @@ cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
   
   # 3 Fit the logistic model on each of the CV folds and receive .repeats * .v logistic
   #   model fits
+  # folds$glm_fits <- map(.x = folds$splits,
+  #                       ~ log_model %>%
+  #                         fit_xy(y = select(analysis(.x), "Survived"),
+  #                                x = select(analysis(.x), .vars))
+  # )
+  
   folds$glm_fits <- map(.x = folds$splits, 
-                        ~ log_model %>% 
-                          fit_xy(y = select(analysis(.x), "Survived"),
-                                 x = select(analysis(.x), .vars))
+                        ~ glm(Survived ~ ., data = analysis(.x), family = "binomial")
   )
   
   # 4 Define the metrics of interest as usual with the yardstick package
@@ -41,9 +46,18 @@ cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
   #   *class_metrics* function
   folds$preds <- map2(.x = folds$glm_fits, 
                       .y = folds$splits,
-                      ~ predict(.x, .y %>% assessment(.)) %>% 
-                        add_column(., .truth = .y %>% assessment(.) %>% 
-                                     pull(Survived)))
+                      ~ tibble(.pred_prob = predict(.x, .y %>% assessment(.), type = "response"),
+                               .pred_class = ifelse(.pred_prob < 0.5, "No", "Yes") %>% as.factor(),
+                               .truth = .y %>% assessment(.) %>% pull(Survived)
+                               )
+  )
+                      
+# 
+# folds$preds <- map2(.x = folds$glm_fits, 
+#                     .y = folds$splits,
+#                     ~ predict(.x, .y %>% assessment(.)) %>% 
+#                       add_column(., .truth = .y %>% assessment(.) %>% 
+#                                    pull(Survived)))
   
   # 6 Run the class metrics function over the predictions of each fold
   folds$metrics <- map(.x = folds$preds, 
@@ -78,10 +92,12 @@ grid <- expand.grid(rep(list(0:1), length(all_vars))) %>%
   
 
 library(stringi)
+cv_log_reg %>% debugonce()
+cv_log_reg(.vars = vars_list[[1]], .mydata = mydata) 
 
-cv_log_reg(.vars = .$ %>% stri_remove_empty(), .mydata = mydata)
+plan(multiprocess)
 
-map(grid[1:10], ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata))
+model_metrics <- future_map(grid[1:10], ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata))
 
 h <- mydata %>% colnames %>% .[1:5]
 
@@ -99,7 +115,11 @@ cvs <- vcs %>%
 
 vars_list %>% map(paste, collapse = ", ")
 
-vcs %>% 
+h <- model_metrics %>% 
   map_dfr(pluck, "cv_res", .id = "model") %>% 
   pivot_wider(names_from = ".metric", values_from = "mean") %>% 
-  mutate(model = vars_list %>% map_chr(paste, collapse = ", "))
+  arrange(desc(accuracy, kap))
+
+library(pander)
+model_metrics$V73$folds$glm_fits %>% pander
+h$accuracy %>% unique
