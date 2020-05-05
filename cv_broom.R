@@ -1,14 +1,50 @@
-library(rsample)
-library(combinat)
-library(furrr)
+
+
+
+library(datasets)
+# Data wrangling
+library(tidyverse)
+library(lubridate)
+library(reshape)
 library(stringi)
-library(pander)
+
+# Data viz
+library(plotly)
+library(scales)
+library(ggthemes)
+library(cowplot)
+library(stargazer)
+library(skimr)
+library(ggmosaic)
+library(plot3D)
+
+# Data presentation
+library(knitr)
+library(stargazer)
+
+# Data analysis
+library(tidymodels)
+library(broom)
+library(glmnet)
+library(rsample)
+library(furrr)
+
+# I Data preparation -------------------------------------------------------------------------
+
+# Convert array to 2-dimensional format
+mydata <- Titanic %>% as_tibble() %>% print(n=50)
+
+# Convert all except n to factors which are easier to handle later on
+mydata <- mydata %>% mutate_at(vars(-n), as.factor) 
+
+# Untable the dbl which makes it easier to use with summarize functions
+mydata <- untable(df = mydata %>% select(-n), 
+                  num = mydata %>% pull(n))
+
+# Retable for a quick check if n stays the same
+mydata %>% count(Class, Sex, Age, Survived, .drop = FALSE)
 ls(package:rsample)
 
-h <- vfold_cv(mydata, v = 10)
-log_fits <- folds$splits %>% 
-  map(analysis) %>% 
-  map(glm, formula = Survived ~ ., family = binomial(link = "logit"))
 
 mydata_rec <-
   recipe(Survived ~ ., data = mydata) %>% 
@@ -98,95 +134,19 @@ model_metrics <- future_map_dfr(grid, ~cv_log_reg(.vars = stri_remove_empty(.), 
 # Create Table ------------------------------------------------------------
 
 # Create table via stargazer, tehr
-out_of_sample <- model_metrics %>% select(combination, accuracy, kap) %>% pivot_longer(cols = -combination, names_to = "Regression") %>% pivot_wider(names_from = "combination", values_from = "value")
-coef_tbl <- model_metrics$fit %>% 
-  set_names(model_metrics$combination) %>% 
-  map_dfr(tidy, .id = "combination") %>% 
-  select(-std.error, -statistic) %>% 
-  unite(col = "estimate", )
-  pivot_longer(-c(combination, term), names_to = "metric", values_to = "value") %>% 
-  pivot_wider(names_from = combination, values_from = value, values_fill = list("" = NA)) %>% 
-  rename(Regression = names) %>% 
-  add_row(out_of_sample) %>% 
-  select(c("Regression", select(., -Regression) %>% map_int(~sum(!is.na(.))) %>% sort() %>% names())) %>% 
-  mutate_at("Regression", ~ as.factor(.) %>% fct_relevel(.,
-    c("(Intercept)",
-      "Class_X2nd",
-      "Class_X3rd",
-      "Class_Crew",
-      "Sex_Male",
-      "Age_Child",
-      "Sex_Male_x_Age_Child",
-      "accuracy",
-      "kap"))) %>% 
-  arrange(Regression) 
-
 line_list <-  model_metrics %>% select( c(kap, accuracy)) %>% imap(~c(paste0("cv_",.y), round(.x, digits = 3))) %>% unlist
-  
-  model_metrics %>% 
-    pull(fit) %>% 
-    exec(stargazer, ., title = "Results", align = TRUE, type = "text", table.placement="H",
-         omit.stat=c("f", "ser"), order=c("Constant",
-                                          "Class_X2nd",
-                                          "Class_X3rd",
-                                          "Class_Crew",
-                                          "Sex_Male",
-                                          "Age_Child",
-                                          "Sex_Male_x_Age_Child"),
-         add.lines= line_list)
-  
-  
-  model_metrics %>% select(c(kap, accuracy)) %>% imap(~c(paste0("cv_",.y), round(.x, digits = 3)))
-  
-  
-model_metrics$fit[[1]] %>% tidy
 
-coef_tbl <- model_metrics$fit %>% 
-  set_names(model_metrics$combination) %>% 
-  map_dfr(~coef(.) %>% tidy(.), .id = "combination") %>% 
-  pivot_wider(names_from = combination, values_from = x) %>% 
-  rename(Regression = names) %>% 
-  add_row(out_of_sample) %>% 
-  
-coef_tbl %>% select(-Regression) %>% map_int(~sum(!is.na(.))) %>% sort() %>% names()
-
-model_metrics$fit %>% 
-  set_names(model_metrics$combination) %>% 
-  map(~coef(.) %>% tidy(.)) %>% 
-  t() %>% 
-  as_data_frame() %>% 
-  rownames_to_column(var = "Variable") %>% 
-  as_tibble()
-
-# Now fit the data on the whole dataset and not only the CVs
-model_metrics$fits <- map(.x = grid, 
-                          ~ glm(Survived ~ ., 
-                                data =  select(mydata_rec, Survived, 
-                                               all_of(stri_remove_empty(.))), 
-                                               family = "binomial"))
-
-
-model_metrics$fit %>% exec(stargazer, ., title = "Results", align = TRUE, out = "tbl.txt", 
-                           table.placement="H",omit.stat=c("f", "ser"), order=c("Constant",
-                                                                                "Class_X2nd",
-                                                                                "Class_X3rd",
-                                                                                "Class_Crew",
-                                                                                "Sex_Male",
-                                                                                "Age_Child",
-                                                                                "Sex_Male_x_Age_Child"))
-
-library(pander)
-model_metrics$V73$folds$glm_fits %>% pander
-h$accuracy %>% unique
-
-model_metrics %>% mutate_at("combination", ~as.factor(.) %>% fct_relevel(coef_tbl %>% select(., -Regression) %>% map_int(~sum(!is.na(.))) %>% sort() %>% names())) %>% 
-  arrange(combination) %>% 
+# Create the table
+model_metrics %>% 
   pull(fit) %>% 
-  exec(stargazer, ., title = "Results", align = TRUE, out = "tbl.txt", 
-       table.placement="H",omit.stat=c("f", "ser"), order=c("Constant",
-                                                            "Class_X2nd",
-                                                            "Class_X3rd",
-                                                            "Class_Crew",
-                                                            "Sex_Male",
-                                                            "Age_Child",
-                                                            "Sex_Male_x_Age_Child"))
+  exec(stargazer, ., title = "Results", align = TRUE, type = "text", table.placement="H",
+       omit.stat=c("f", "ser"), order=c("Constant",
+                                        "Class_X2nd",
+                                        "Class_X3rd",
+                                        "Class_Crew",
+                                        "Sex_Male",
+                                        "Age_Child",
+                                        "Sex_Male_x_Age_Child"),
+       add.lines= line_list)
+
+  
