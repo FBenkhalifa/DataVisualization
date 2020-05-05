@@ -1,6 +1,7 @@
 library(rsample)
 library(combinat)
 library(furrr)
+library(stringi)
 ls(package:rsample)
 
 h <- vfold_cv(mydata, v = 10)
@@ -18,13 +19,13 @@ mydata_rec <-
 cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
 
     # 1 Generate cv with .v folds and .repeats repeats
-  mydata_reduced <- .mydata %>% select(Survived, .vars)
+  mydata_reduced <- .mydata %>% select(Survived, all_of(.vars))
   folds <- vfold_cv(mydata_reduced, v = .v, repeats = .repeats)
   
   # 2 Define the log model as usual in the procedure of the package parsnip
-  log_model <- 
-    logistic_reg() %>% 
-    set_engine("glm")
+  # log_model <- 
+  #   logistic_reg() %>% 
+  #   set_engine("glm")
   
   
   # 3 Fit the logistic model on each of the CV folds and receive .repeats * .v logistic
@@ -69,10 +70,13 @@ cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
   cv_res <- folds$metrics %>% 
     exec(bind_rows, ., .id = "fold") %>% 
     group_by(.metric) %>% 
-    summarize(mean = mean(.estimate))
+    summarize(mean = mean(.estimate)) %>% 
+    column_to_rownames(var = ".metric") %>% 
+    t() %>% 
+    as_tibble()
   
   # 7 Return the folds object
-  return(lst(folds = folds, cv_res = cv_res))
+  return(bind_cols(folds = tibble(lst(folds)), cv_res) %>% rename(folds = `lst(folds)`))
 }
 
 combn(c(1,2), 5)
@@ -91,13 +95,13 @@ grid <- expand.grid(rep(list(0:1), length(all_vars))) %>%
   as_tibble()
   
 
-library(stringi)
+
 cv_log_reg %>% debugonce()
-cv_log_reg(.vars = vars_list[[1]], .mydata = mydata) 
+cv_log_reg(.vars = c("Class_X1st", "Class_X2nd"), .mydata = mydata) 
 
 plan(multiprocess)
 
-model_metrics <- future_map(grid[1:10], ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata))
+model_metrics <- future_map_dfr(grid, ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata), .id = "fold", .progress = TRUE)
 
 h <- mydata %>% colnames %>% .[1:5]
 
