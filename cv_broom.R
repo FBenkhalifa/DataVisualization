@@ -20,33 +20,13 @@ mydata_rec <-
 
 cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
 
-  # 1 Generate cv with .v folds and .repeats repeats
+  # 1 Create subset of original dataframe
   mydata_reduced <- .mydata %>% select(Survived, all_of(.vars))
   
-  # 2 Create dummies and interaction terms
-  # mydata_reduced <-
-  #   recipe(Survived ~ ., data = mydata) %>% 
-  #   step_dummy(all_predictors()) %>% 
-  #   step_interact(terms = ~ starts_with("Sex"):starts_with("Age")) %>% 
-  #   step_zv(all_predictors()) %>% 
-  #   prep() %>% 
-  #   juice() 
-  
+  # 2  Generate cv with .v folds and .repeats repeats
   folds <- vfold_cv(mydata_reduced, v = .v, repeats = .repeats)
   
-  # 2 Define the log model as usual in the procedure of the package parsnip
-  # log_model <- 
-  #   logistic_reg() %>% 
-  #   set_engine("glm")
-  
-  
-  # 3 Fit the logistic model on each of the CV folds and receive .repeats * .v logistic
-  #   model fits
-  # folds$glm_fits <- map(.x = folds$splits,
-  #                       ~ log_model %>%
-  #                         fit_xy(y = select(analysis(.x), "Survived"),
-  #                                x = select(analysis(.x), .vars))
-  # )
+  # 3 Fit the logistic model on each of the CV folds and receive .repeats * .v logistic regressions
   
   folds$glm_fits <- map(.x = folds$splits, 
                         ~ glm(Survived ~ ., data = analysis(.x), family = "binomial")
@@ -65,13 +45,6 @@ cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
                                )
   )
                       
-# 
-# folds$preds <- map2(.x = folds$glm_fits, 
-#                     .y = folds$splits,
-#                     ~ predict(.x, .y %>% assessment(.)) %>% 
-#                       add_column(., .truth = .y %>% assessment(.) %>% 
-#                                    pull(Survived)))
-  
   # 6 Run the class metrics function over the predictions of each fold
   folds$metrics <- map(.x = folds$preds, 
                        ~ class_metrics(., 
@@ -92,15 +65,19 @@ cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
               data = mydata_reduced, 
               family = "binomial"))
   
-  # 7 Return the folds object
+  # 9 Add the number of variables used in this model for better overview later
+  cv_res$n_var <- cv_res$fit  %>% map_int(~coef(.) %>% length(.))
+  
+  # 10 Return the folds object
   return(bind_cols(folds = tibble(lst(folds)), cv_res) %>% rename(folds = `lst(folds)`))
 }
 
-combn(c(1,2), 5)
-permn(c(1,2,3))
+# Debug the function if needed
+cv_log_reg %>% debugonce()
+cv_log_reg(.vars = c("Class_X3rd", "Class_X2nd", "Class_Crew"), .mydata = mydata_rec)
 
+# Create the tuning grid
 all_vars <- mydata_rec %>% colnames %>% .[-c(1:4)]
-
 grid <- expand.grid(rep(list(0:1), length(all_vars))) %>% 
   set_names(all_vars) %>% 
   imap(~ifelse(.x == 1, .y, "")) %>% 
@@ -111,16 +88,16 @@ grid <- expand.grid(rep(list(0:1), length(all_vars))) %>%
   t() %>% 
   as_tibble()
   
-
-
-cv_log_reg %>% debugonce()
-cv_log_reg(.vars = c("Class_X3rd", "Class_X2nd", "Class_Crew"), .mydata = mydata_rec) 
-
-plan(multiprocess)
+# Pass all the combinations through the CV function, 
+plan(multiprocess) # Set up parallelization for faster results
 
 model_metrics <- future_map_dfr(grid, ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata_rec), .id = "combination", .progress = TRUE) %>% 
-  arrange(desc(accuracy, kap))
+  arrange(n_var)
 
+
+# Create Table ------------------------------------------------------------
+
+# Create table via stargazer, tehr
 out_of_sample <- model_metrics %>% select(combination, accuracy, kap) %>% pivot_longer(cols = -combination, names_to = "Regression") %>% pivot_wider(names_from = "combination", values_from = "value")
 coef_tbl <- model_metrics$fit %>% 
   set_names(model_metrics$combination) %>% 
@@ -144,10 +121,9 @@ coef_tbl <- model_metrics$fit %>%
       "kap"))) %>% 
   arrange(Regression) 
 
-
+line_list <-  model_metrics %>% select( c(kap, accuracy)) %>% imap(~c(paste0("cv_",.y), round(.x, digits = 3))) %>% unlist
   
-  model_metrics %>% mutate_at("combination", ~as.factor(.) %>% fct_relevel(coef_tbl %>% select(., -Regression) %>% map_int(~sum(!is.na(.))) %>% sort() %>% names())) %>% 
-    arrange(combination) %>% 
+  model_metrics %>% 
     pull(fit) %>% 
     exec(stargazer, ., title = "Results", align = TRUE, type = "text", table.placement="H",
          omit.stat=c("f", "ser"), order=c("Constant",
@@ -157,7 +133,7 @@ coef_tbl <- model_metrics$fit %>%
                                           "Sex_Male",
                                           "Age_Child",
                                           "Sex_Male_x_Age_Child"),
-         add.lines= model_metrics %>% select( c(kap, accuracy)) %>% imap(~c(paste0("cv_",.y), round(.x, digits = 3))))
+         add.lines= line_list)
   
   
   model_metrics %>% select(c(kap, accuracy)) %>% imap(~c(paste0("cv_",.y), round(.x, digits = 3)))
