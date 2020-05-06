@@ -29,10 +29,12 @@ library(glmnet)
 library(rsample)
 library(furrr)
 
+library(pander)
+
 # I Data preparation -------------------------------------------------------------------------
 
 # Convert array to 2-dimensional format
-mydata <- Titanic %>% as_tibble() %>% print(n=50)
+mydata <- Titanic %>% as_tibble() 
 
 # Convert all except n to factors which are easier to handle later on
 mydata <- mydata %>% mutate_at(vars(-n), as.factor) 
@@ -43,7 +45,6 @@ mydata <- untable(df = mydata %>% select(-n),
 
 # Retable for a quick check if n stays the same
 mydata %>% count(Class, Sex, Age, Survived, .drop = FALSE)
-ls(package:rsample)
 
 
 mydata_rec <-
@@ -127,14 +128,18 @@ grid <- expand.grid(rep(list(0:1), length(all_vars))) %>%
 # Pass all the combinations through the CV function, 
 plan(multiprocess) # Set up parallelization for faster results
 
-model_metrics <- future_map_dfr(grid, ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata_rec), .id = "combination", .progress = TRUE) %>% 
+model_metrics <- future_map_dfr(grid, ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata_rec, .v = 15, .repeats = 10), .id = "combination", .progress = TRUE) %>% 
   arrange(n_var)
+save(model_metrics, file = "./model.rda")
+model_metrics$fit %>% map(~ anova(., ) %>% tidy(.))
 
-
+model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
+model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., type = "text")
+anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
 # Create Table ------------------------------------------------------------
 
 # Create table via stargazer, tehr
-line_list <-  model_metrics %>% select( c(kap, accuracy)) %>% imap(~c(paste0("cv_",.y), round(.x, digits = 3))) %>% unlist
+line_list <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
 
 # Create the table
 model_metrics %>% 
@@ -150,3 +155,11 @@ model_metrics %>%
        add.lines= line_list)
 
   
+mydata_mean <- mydata %>% mutate_at("Survived", ~ifelse(. == "No", 0, 1))
+mydata_mean %>% 
+  pivot_longer(-Survived, names_to = "Variable") %>% 
+  group_by(value) %>% 
+  summarize(`Survival Probability` = format(mean(Survived), digits = 3)) %>% 
+  rename(Category = value) %>% 
+  as.matrix() %>% 
+  stargazer(., type = "text", digits = 3)

@@ -1,0 +1,55 @@
+---
+title: "Untitled"
+author: "me"
+date: "November 2019"
+output:
+  pdf_document:
+    keep_tex: true
+header-includes:
+   - \usepackage{dcolumn}    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(stargazer)
+library(knitr)
+
+options(tinytex.verbose = TRUE)
+load("./model.rda")
+```
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r, results = 'asis', echo = FALSE}
+# Create table via stargazer, tehr
+line_list <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
+
+# Create the table
+model_metrics %>% 
+  pull(fit) %>% 
+  exec(stargazer, ., title = "Results", align = TRUE,
+       omit.stat=c("f", "ser"), order=c("Constant",
+                                        "Class_X2nd",
+                                        "Class_X3rd",
+                                        "Class_Crew",
+                                        "Sex_Male",
+                                        "Age_Child",
+                                        "Sex_Male_x_Age_Child"),
+       add.lines= line_list,
+       font.size = "tiny",
+       column.sep.width = "-15pt")
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
