@@ -1,0 +1,148 @@
+---
+title: "Untitled"
+author: "me"
+date: "November 2019"
+output:
+  pdf_document:
+    keep_tex: true
+header-includes:
+   - \usepackage{dcolumn}    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(tinytex.verbose = FALSE)
+library(datasets)
+# Data wrangling
+library(tidyverse)
+library(lubridate)
+library(reshape)
+library(stringi)
+
+# Data viz
+library(plotly)
+library(scales)
+library(ggthemes)
+library(cowplot)
+library(stargazer)
+library(skimr)
+library(ggmosaic)
+library(plot3D)
+
+# Data presentation
+library(knitr)
+library(stargazer)
+
+# Data analysis
+library(tidymodels)
+library(broom)
+library(glmnet)
+library(rsample)
+library(furrr)
+load("./model.rda")
+
+# Convert array to 2-dimensional format
+mydata <- Titanic %>% as_tibble() 
+
+# Convert all except n to factors which are easier to handle later on
+mydata <- mydata %>% mutate_at(vars(-n), as.factor) 
+
+# Untable the dbl which makes it easier to use with summarize functions
+mydata <- untable(df = mydata %>% select(-n), 
+                  num = mydata %>% pull(n))
+
+```
+
+## Introduction
+
+The purpose of this paper is to assess the effect of the economic status (class) of the cabine on the chances of survival as a passenger on the Titanic. The fate of the Titanic has captured the attention of the whole world. It is widely presumed that the people getting the few places in the limited number of lifeboats and surviving the cold waters of the North Atlantic were rather from the upper cabin classes than from lower classes. Therefore, ex ante, the effect seems to be clear – the lower the class of a passenger, the smaller the chances for survival. This inequality would constitute an appalling injustice and thus, necessitates a factual verification. Fortunately, we received passenger data from the British Board of Trade that enables us to assess this effect. 
+We perform a thorough analysis in the empirical framework of a linear regression. We find that the relationship between class and chances of survival is best described by XYXY. We conclude that it is likely that the effect on the survival rate might be a combination of several factors, with economic status of the cabine being a significant one (depends on data findings). The results of this study should inform our struggle for safe passages for everyone and workers rights worldwide.  
+
+## Data and descriptives
+
+The dataset “Titanic” contains information about the survival status of a person, gender, the economic class and the age of each passenger. All the variables are categorical, with only the economic class having four categories - the remaining are binary.
+```{r cars, echo = FALSE}
+## A Plot data with target variable
+survival_rate <- mydata %>% 
+  count(Survived, .drop = FALSE) %>% 
+  mutate(freq_per_class = n/sum(n))
+
+# Convert data to long format for facet plotting
+mydata_semi_long <- mydata %>% 
+  pivot_longer(-Survived, 
+               names_to = "variable", 
+               values_to = "attribute", 
+               names_repair = "universal") %>% 
+  mutate_if(is.character, as.factor)
+
+fct_counts <- mydata_semi_long %>%
+  group_by(variable) %>%
+  do(fct_count(.$attribute, prop = TRUE))
+
+mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  ylab("Survival Rate") +
+  theme(axis.text.x = element_text(angle=45, hjust=1))+
+  scale_fill_brewer(palette = "Set1") +
+  geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
+  # geom_label(label = fct_counts$n, nudge_y = 1500) +
+  facet_wrap(~variable, scales = "free_x") +
+  theme_hc()
+```
+
+In total there are $2201$ observations in the dataset. A simple summary statistic denoting the marginal distributions of the variables is illustrated in figure xxx. 
+In order to get a preliminary grasp of the relation between the regressors and the target variable, several stacked barplots are provided in Figure 1. They graphically indicate differences in the survival rate between multiple groups. The white dotted line marks the overall mean survivals and facilitates to detect conspicious groups.
+
+```{r, results = 'asis', echo = FALSE}
+# Create table via stargazer, tehr
+line_list <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
+
+# Create the table
+model_metrics %>% 
+  pull(fit) %>% 
+  exec(stargazer, ., title = "Results", align = TRUE,
+       omit.stat=c("f", "ser"), order=c("Constant",
+                                        "Class_X2nd",
+                                        "Class_X3rd",
+                                        "Class_Crew",
+                                        "Sex_Male",
+                                        "Age_Child",
+                                        "Sex_Male_x_Age_Child"),
+       add.lines= line_list,
+       font.size = "tiny",
+       column.sep.width = "-15pt")
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r, results = 'asis', echo = FALSE}
+mydata %>% 
+  mutate_at("Survived", ~ifelse(. == "No", 0, 1)) %>% 
+  pivot_longer(-Survived, names_to = "Variable") %>% 
+  group_by(value) %>% 
+  summarize(`Survival Probability` = format(mean(Survived), digits = 3)) %>% 
+  
+  as.matrix() %>% 
+  stargazer(., title = "Mean values")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r, results = 'asis', echo = FALSE}
+model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (1)")
+
+```
+The likelihood ratio tests indicates that adding each variable to the regression clearly improved the model.
+```{r, results = 'asis', echo = FALSE}
+model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (8)")
+
+```
+The same is true for our complex model which increases over time.
+
+```{r, results = 'asis', echo = FALSE}
+anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., title = "Comparison of model (1) and (2) via a likelihood ratio test")
+
+```

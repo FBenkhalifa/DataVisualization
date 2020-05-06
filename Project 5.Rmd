@@ -6,13 +6,16 @@ date: "3 5 2020"
 output:
   pdf_document:
     keep_tex: true
+    fig_caption: yes
 header-includes:
    - \usepackage{dcolumn}  
+   - \usepackage{float}  
+   - \usepackage{flafter}  
 ---
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, fig.pos = "h", out.extra = "")
 library(datasets)
 # Data wrangling
 library(tidyverse)
@@ -28,7 +31,7 @@ library(cowplot)
 library(stargazer)
 library(skimr)
 library(ggmosaic)
-library(plot3D)
+library(ggpubr)
 
 # Data presentation
 library(knitr)
@@ -42,7 +45,7 @@ library(rsample)
 library(furrr)
 ```
 
-```{r, include = FALSE}
+```{r preparation, include = FALSE}
 
 # Convert array to 2-dimensional format
 mydata <- Titanic %>% as_tibble() %>% print(n=50)
@@ -54,61 +57,7 @@ mydata <- mydata %>% mutate_at(vars(-n), as.factor)
 mydata <- untable(df = mydata %>% select(-n), 
                   num = mydata %>% pull(n))
 
-# Define cv function
-cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
-
-  # 1 Create subset of original dataframe
-  mydata_reduced <- .mydata %>% select(Survived, all_of(.vars))
-  
-  # 2  Generate cv with .v folds and .repeats repeats
-  folds <- vfold_cv(mydata_reduced, v = .v, repeats = .repeats)
-  
-  # 3 Fit the logistic model on each of the CV folds and receive .repeats * .v logistic regressions
-  
-  folds$glm_fits <- map(.x = folds$splits, 
-                        ~ glm(Survived ~ ., data = analysis(.x), family = "binomial")
-  )
-  
-  # 4 Define the metrics of interest as usual with the yardstick package
-  class_metrics <- metric_set(accuracy, kap)
-  
-  # 5 Create a new column with the predicted and true values to feed into the
-  #   *class_metrics* function
-  folds$preds <- map2(.x = folds$glm_fits, 
-                      .y = folds$splits,
-                      ~ tibble(.pred_prob = predict(.x, .y %>% assessment(.), type = "response"),
-                               .pred_class = ifelse(.pred_prob < 0.5, "No", "Yes") %>% as.factor(),
-                               .truth = .y %>% assessment(.) %>% pull(Survived)
-                               )
-  )
-                      
-  # 6 Run the class metrics function over the predictions of each fold
-  folds$metrics <- map(.x = folds$preds, 
-                       ~ class_metrics(., 
-                                       truth = .truth, 
-                                       estimate = .pred_class))
-  
-  # 7 Get the cross validation means
-  cv_res <- folds$metrics %>% 
-    exec(bind_rows, ., .id = "fold") %>% 
-    group_by(.metric) %>% 
-    summarize(mean = mean(.estimate)) %>% 
-    column_to_rownames(var = ".metric") %>% 
-    t() %>% 
-    as_tibble()
-  
-  # 8 Fit the glm on the whole dataset
-  cv_res$fit <- lst(glm(Survived ~ ., 
-              data = mydata_reduced, 
-              family = "binomial"))
-  
-  # 9 Add the number of variables used in this model for better overview later
-  cv_res$n_var <- cv_res$fit  %>% map_int(~coef(.) %>% length(.))
-  
-  # 10 Return the folds object
-  return(bind_cols(folds = tibble(lst(folds)), cv_res) %>% rename(folds = `lst(folds)`))
-}
-
+# Prepare
 mydata_rec <-
   recipe(Survived ~ ., data = mydata) %>% 
   step_dummy(all_predictors()) %>% 
@@ -118,80 +67,68 @@ mydata_rec <-
   juice()
 
 
-# Create the tuning grid
-# all_vars <- mydata_rec %>% colnames %>% .[-c(1:4)]
-# grid <- expand.grid(rep(list(0:1), length(all_vars))) %>% 
-#   set_names(all_vars) %>% 
-#   imap(~ifelse(.x == 1, .y, "")) %>% 
-#   do.call(cbind, .) %>% 
-#   as_tibble() %>% 
-#   mutate(Class_X2nd = "Class_X2nd", Class_X3rd = "Class_X3rd", Class_Crew = "Class_Crew") %>% 
-#   as.matrix() %>% 
-#   t() %>% 
-#   as_tibble()
-#   
-# # Pass all the combinations through the CV function, 
-# plan(multiprocess) # Set up parallelization for faster results
-# 
-# # Get model metrics
-# model_metrics <- future_map_dfr(grid, ~cv_log_reg(.vars = stri_remove_empty(.), .mydata = mydata_rec, .v = 15, .repeats = 10), .id = "combination", .progress = TRUE) %>% 
-#   arrange(n_var)
-load("./model.rda")
+load("./cv_model/cv_results.rda")
 
 ```
 
 ## Introduction
 
-The purpose of this paper is to assess the effect of the economic status (class) of the cabine on the chances of survival as a passenger on the Titanic. The fate of the Titanic has captured the attention of the whole world. It is widely presumed that the people getting the few places in the limited number of lifeboats and surviving the cold waters of the North Atlantic were rather from the upper cabin classes than from lower classes. Therefore, ex ante, the effect seems to be clear – the lower the class of a passenger, the smaller the chances for survival. This inequality would constitute an appalling injustice and thus, necessitates a factual verification. Fortunately, we received passenger data from the British Board of Trade that enables us to assess this effect. 
-We perform a thorough analysis in the empirical framework of a linear regression. We find that the relationship between class and chances of survival is best described by XYXY. We conclude that it is likely that the effect on the survival rate might be a combination of several factors, with economic status of the cabine being a significant one (depends on data findings). The results of this study should inform our struggle for safe passages for everyone and workers rights worldwide. 
+The purpose of this paper is to assess the effect of the economic status (class) of the cabin on the chances of survival as a passenger on the Titanic. The fate of the R.M.S. Titanic and its passengers has captured the attention of the whole world. There is consensus that the chances of getting the few places in the limited number of lifeboats and surviving the cold waters of the North Atlantic differed among social groups. Remarkably, women rather than men survived the disaster [@Hall1986]. This was apparently due to the long time of the sinking (2.6h) that allowed for social norms such as ‘women and children first’ to be established @Frey2010. However, this did not apply across cabin classes: Eyewitness reports suggest that there was a structural disadvantage and discrimination of third-class passengers [@Diekmann2012]. Accordingly, survivors were rather from the upper cabin classes than from lower classes [@DixonGriffiths2006, @Frey2011, @Hall1986]. Therefore, ex ante, the effect seems to be clear – the lower the class of a passenger, the smaller the chances for survival. This inequality would constitute an appalling injustice and thus, necessitates a factual verification. Fortunately, we received passenger data from the British Board of Trade that enables us to assess this effect. 
+We perform a thorough analysis in the empirical framework of a logistic regression. We find that the relationship between class and chances of survival is best described by including additional variables and an interaction term. We conclude that it is likely that the effect on the survival rate might be a combination of several factors, with economic status of the cabin being a significant one. The results of this study should inform our struggle for safe passages for everyone and workers rights worldwide.
 
 
 ## Data and descriptives
 
-The dataset “Titanic” contains information about the survival status of a person, gender, the economic class and the age of each passenger. All the variables are categorical, with only the economic class having four categories - the remaining are binary.
-```{r, results = 'asis', echo = FALSE}
-mydata %>% 
-  mutate_at("Survived", ~ifelse(. == "No", 0, 1)) %>% 
-  pivot_longer(-Survived, names_to = "Variable") %>% 
-  group_by(value) %>% 
-  summarize(`Survival Probability` = format(mean(Survived), digits = 3)) %>% 
-  
-  as.matrix() %>% 
-  stargazer(., title = "Mean values", font.size = "small", header=FALSE)
-```
+The dataset “Titanic” contains information about the survival status of a person, gender, the economic class and the age of each passenger. All the variables are categorical, with only the economic class having four categories - the remaining are binary. Figure \ref{fig:categories}
+```{r categories, fig.align="center", echo = FALSE, fig.cap="Descriptive figures"}
 
-In total there are $2201$ observations in the dataset. A simple summary statistic denoting the marginal distributions of the variables is illustrated in figure xxx. 
-In order to get a preliminary grasp of the relation between the regressors and the target variable, several stacked barplots are provided in Figure 1. They graphically indicate differences in the survival rate between multiple groups. The white dotted line marks the overall mean survivals and facilitates to detect conspicious groups.
+# 3 Produce a table which helps to grasp differences within groups more easily
+p1 <- mydata %>%
+  pivot_longer(
+    everything(),
+    names_to = "variable",
+    values_to = "attribute",
+    names_repair = "universal"
+  ) %>% ggplot(aes(x = attribute, group = variable)) +
+  geom_bar(aes(y = (..count..)))+
+  ylab("n") +
+  labs(title = "Histograms per variable") +
+  facet_wrap(~variable, scales = "free_x") +
+  theme_bw() +
+  theme(text = element_text(size=10))
 
-```{r cars, echo = FALSE}
-## A Plot data with target variable
+# 4 Compute survival rate which will be included in next plot
 survival_rate <- mydata %>% 
   count(Survived, .drop = FALSE) %>% 
   mutate(freq_per_class = n/sum(n))
 
-# Convert data to long format for facet plotting
-mydata_semi_long <- mydata %>% 
+# 5 Convert data to long format for facet plotting in ggplot
+p2 <- mydata %>% 
   pivot_longer(-Survived, 
                names_to = "variable", 
                values_to = "attribute", 
                names_repair = "universal") %>% 
-  mutate_if(is.character, as.factor)
-
-fct_counts <- mydata_semi_long %>%
-  group_by(variable) %>%
-  do(fct_count(.$attribute, prop = TRUE))
-
-mydata_semi_long %>% ggplot(aes(x = attribute, fill = Survived)) +
+  mutate_if(is.character, as.factor) %>% 
+  ggplot(aes(x = attribute, fill = Survived)) +
   geom_bar(position = "fill") +
   scale_y_continuous(labels = percent) +
   ylab("Survival Rate") +
   theme(axis.text.x = element_text(angle=45, hjust=1))+
-  scale_fill_brewer(palette = "Set1") +
+  scale_fill_manual(values = c("gray25", "gray")) +
   geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
-  # geom_label(label = fct_counts$n, nudge_y = 1500) +
   facet_wrap(~variable, scales = "free_x") +
-  theme_bw()
+  labs(title = "Survival outcome per category") +
+  theme_bw()+
+  theme(legend.position="bottom", text = element_text(size=10))
+
+## !!!!More descriptive stats can be found in the appendix!!!!
+
+ggarrange(p1, p2, nrow = 1, widths = c(1, 1.3))
+
 ```
+
+In total there are $2201$ observations in the dataset. A simple summary statistic denoting the marginal distributions of the variables is illustrated in figure xxx. 
+In order to get a preliminary grasp of the relation between the regressors and the target variable, several stacked barplots are provided in Figure 1. They graphically indicate differences in the survival rate between multiple groups. The white dotted line marks the overall mean survivals and facilitates to detect conspicious groups.
 The graph underlines three provisional findings: 
 - Children had a higher chance to survive than adults, 
 - survival rate diminishes with economic class and 
@@ -209,10 +146,11 @@ where $i$ denotes the i-th individual and $\beta_0$, $\beta_1$, $\beta_2$ and $\
 We abstained from constructing this model via a linear relationship, as assumed by OLS, since for some range of the covariates the estimated conditional probability may fall outside of $[0,1]$. Clearly, such estimations violate the premise of probability functions. Further, a linear probability model implies that a ceteris paribus increase in $x_i$ always corresponds with a constant change of $P[Survival=1|x_i]$ regardless of the initial value of $x_i$. This also implies that we can get $P[Survival=1|x_i]$ greater or less than $[0,1]$ if we increase or decrease the dependent variable continually. Particularly when trying to estimate partial effects for extreme values of $x$, this should cause concerns.
 
 Here, the variable $Survived$ is a binary variable indicating whether a person survived $Survived = 1$ or not. However, not only the dependent variable is categorical, all explenatory are categorical as well. To account for this specificity with regard to this paper's purpose, namely to investigate the effect economic class on the chances of survival, the explanatory variables are converted into three dummy variables. This allows  since the magnitude of switching from Class 1 to Class 2, for instance, does not convey useful information, only ordinal information.This ensures that the beta coefficients are more flexible, since they are not bound to increase in a linear way for every class. We have chosen to not make a dummy variable for “Class 1” as the effect of being part of the first class is depicted in $\beta_0$ while in this case all the other “Class” variables are 0. Including too many dummy to describe a group, can lead to the so-called dummy variable trap @Wooldridge [p.213]. Thus, the base group in this model is the first class. Consequently, $\beta_1$, $\beta_2$ and $\beta_3$ depict the increase or decrease of the survival probabilities in comparison with the base group.
-The estimation results of this simple model are displayed in the first column of table X.
-```{r, results = 'asis', echo = FALSE}
+The estimation results of this simple model are displayed in the first column of table xxx
+
+```{r cv, results = 'asis', fig.pos = "H"}
 # Create table via stargazer, tehr
-line_list <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
+cv_results <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
 
 # Create the table
 model_metrics %>% 
@@ -225,9 +163,9 @@ model_metrics %>%
                                         "Sex_Male",
                                         "Age_Child",
                                         "Sex_Male_x_Age_Child"),
-       add.lines= line_list,
-       font.size = "tiny",
-       column.sep.width = "-15pt",  header=FALSE)
+       add.lines= cv_results,
+       font.size = "small",
+       column.sep.width = "-24pt",  header=FALSE,  table.placement = "t")
 ```
 
 The estimation results of this simple model are displayed in the first column of table X. The Constant - b0=0.51 - is the only estimate which is positive. Thus, this analysis suggests that the first class has the highest chance of survival compared to the other classes and the crew.  The estimate for the crew class is the lowest with -1.66 which suggests that being a member of the crew class has the strongest negative effect on the chances to survive. However, the estimate for the third class is very close to the one of the crew with -1.6. So being a passenger in the third class or being a crew member reduces the chances of survival almost equally compared to the first class passengers (base group). This matches what we see in Table 1 - the survival rate of the third class and the crew class are almost the same around 25% and the first class has the highest survival rate. 
@@ -241,12 +179,14 @@ Further, we add an interaction term to our model. There is a myriad of options f
 
 Clearly this dataset does not deliver unbiased effects of the ecomomic classe. In order to extract the effect of class, we could think of a randomized experiment. Therefore, we would randomly pick 1000 people representative for passengers who prefer to travel by a liner. For instance, past reservations on different liners across the world could be pooled into a dataset, and 1000 people are randomly chosen and informed that they won a free a cruise in a lottery. Once they arrive on the liner, which has also been randomly chosen, they are randomly assigned to different cabin classes holding all other factors such as ship policy equal. To eventually test how the economic class affects the survival chance, the ship is directed towards 
 ```{r, results = 'asis', echo = FALSE}
-model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (1)", font.size = "small", header=FALSE)
+model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (8)", font.size = "small", header=FALSE)
 
 ```
+
 The likelihood ratio tests indicates that adding each variable to the regression clearly improved the model.
+
 ```{r, results = 'asis', echo = FALSE}
-model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (8)", font.size = "small", header=FALSE)
+model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (1)", font.size = "small", header=FALSE)
 
 ```
 The same is true for our complex model which increases over time.

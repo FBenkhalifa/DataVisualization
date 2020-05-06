@@ -1,5 +1,3 @@
-
-
 library(datasets)
 # Data wrangling
 library(tidyverse)
@@ -14,8 +12,7 @@ library(ggthemes)
 library(cowplot)
 library(stargazer)
 library(skimr)
-library(ggmosaic)
-library(plot3D)
+library(ggpubr)
 
 # Data presentation
 library(knitr)
@@ -62,7 +59,7 @@ mydata_mean %>%
   stargazer(., type = "text", digits = 3)
 
 # 3 Produce a table which helps to grasp differences within groups more easily
-mydata %>%
+p1 <- mydata %>%
   pivot_longer(
     everything(),
     names_to = "variable",
@@ -73,15 +70,16 @@ mydata %>%
   ylab("n") +
   labs(title = "Histograms per variable") +
   facet_wrap(~variable, scales = "free_x") +
-  theme_bw()
+  theme_bw() +
+  theme(text = element_text(size=10))
 
 # 4 Compute survival rate which will be included in next plot
 survival_rate <- mydata %>% 
   count(Survived, .drop = FALSE) %>% 
   mutate(freq_per_class = n/sum(n))
-
+p1
 # 5 Convert data to long format for facet plotting in ggplot
-mydata %>% 
+p2 <- mydata %>% 
   pivot_longer(-Survived, 
                names_to = "variable", 
                values_to = "attribute", 
@@ -96,12 +94,13 @@ mydata %>%
   geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
   facet_wrap(~variable, scales = "free_x") +
   labs(title = "Survival outcome per category") +
-  theme_bw()
+  theme_bw()+
+  theme(legend.position="bottom", text = element_text(size=10))
 
-
+p2
 ## !!!!More descriptive stats can be found in the appendix!!!!
 
-
+ggarrange(p1, p2, nrow = 1, widths = c(1, 1.3))
 # II Prepare dataset with dummy variables and interaction terms -----------
 
 # This will dummy encode the variables. The base group women, adult,1 class is chosen
@@ -152,7 +151,7 @@ model_metrics %>% select(combination, accuracy) # The mean accuracy over the dif
 model_metrics %>% select(combination, kap)  # THe mean kappa over a full cv run
 
 # 6 Save the model for reproducibility
-save(model_metrics, file = "./model.rda")
+save(model_metrics, file = "./cv_model/cv_results.rda")
 
 # IV Debugging  ----------------------------------------------------------
 # In order to check how the function works, run the following chunk and step through
@@ -161,17 +160,7 @@ cv_log_reg %>% debugonce()
 cv_log_reg(.vars = c("Class_X3rd", "Class_X2nd", "Class_Crew"), .mydata = mydata_rec)
 
 
-# V Run model tests -------------------------------------------------------
-
-# 1 Run a one sided anova on the best and the worst models
-model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., type = "text")
-model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
-
-# 2 Run likelihood ratio test on both models
-anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
-
-
-# VI Create result Table ------------------------------------------------------------
+# V Create result Table ------------------------------------------------------------
 
 # Create a vector which inputs the results from the CV into the stargazer table
 cv_results <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
@@ -189,12 +178,19 @@ model_metrics %>%
                                         "Sex_Male_x_Age_Child"),
        add.lines= cv_results) # This adds the cv list to the table
 
-  
+# VI Run model tests -------------------------------------------------------
+
+# 1 Run a one sided anova on the best and the worst models
+model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., type = "text")
+model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
+
+# 2 Run likelihood ratio test on both models
+anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
 
 
 # VII Appendix ----------------------------------------------------------------
 # Here we have some chunks we did not include in the paper because of problems with
-# space. But in a longer paper they could be useful
+# space. But in a longer paper they could be useful.
 
 ## A Univariate distributions
 
