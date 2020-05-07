@@ -1,31 +1,20 @@
 library(datasets)
-# Data wrangling
-library(tidyverse)
-library(lubridate)
-library(reshape)
-library(stringi)
 
 # Data viz
-library(plotly)
-library(scales)
 library(ggthemes)
-library(cowplot)
 library(stargazer)
-library(skimr)
 library(ggpubr)
-
-# Data presentation
-library(knitr)
-library(stargazer)
 
 # Data analysis
 library(tidymodels)
 library(broom)
-library(glmnet)
 library(rsample)
-library(furrr)
 
-library(pander)
+# Data wrangling
+library(reshape)
+library(stringi)
+library(furrr)
+library(tidyverse)
 
 # I Data preparation -------------------------------------------------------------------------
 
@@ -155,8 +144,12 @@ model_metrics %>% select(combination, kap)  # THe mean kappa over a full cv run
 # Check p values of simple model
 model_metrics$fit[[1]] %>% tidy
 
+# Check out some confusion matrices
+model_metrics$folds[[1]]$preds[[1]] %>% conf_mat(.truth, .pred_class)
+model_metrics$folds[[1]]$preds[[1]] %>% conf_mat(.truth, .pred_class) %>% summary
+
 # 6 Save the model for reproducibility
-save(model_metrics, file = "./cv_model/cv_results.rda")
+# save(model_metrics, file = "./cv_model/cv_results.rda")
 
 # IV Debugging  ----------------------------------------------------------
 # In order to check how the function works, run the following chunk and step through
@@ -195,7 +188,6 @@ model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., 
 # 2 Run likelihood ratio test on both models
 anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
 
-model_metrics$folds[[1]]$preds[[1]] %>% conf_mat(.truth, .pred_class) %>% summary
 # VII Appendix ----------------------------------------------------------------
 # Here we have some chunks we did not include in the paper because of problems with
 # space. But in a longer paper they could be useful.

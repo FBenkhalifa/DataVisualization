@@ -76,7 +76,7 @@
 \title{Estimating the effect of luxury cabin on the chances to survive the
 sinking of the Titanic}
 \author{Florian Benkhalifa, Camilla Bischofberger, Max Röcker}
-\date{3 5 2020}
+\date{7 5 2020}
 
 \begin{document}
 \maketitle
@@ -98,7 +98,7 @@ apply across cabin classes: Eyewitness reports suggest that there was a
 structural disadvantage and discrimination of third-class passengers
 (Diekmann 2012). Accordingly, survivors were rather from the upper cabin
 classes than from lower classes (Dixon and Griffiths 2006; Frey, Savage,
-and Torgler 2011; Hall 1986). Therefore, ex ante, the effect seems to be
+and Torgler 2010; Hall 1986). Therefore, ex ante, the effect seems to be
 clear -- the lower the class of a passenger, the smaller the chances for
 survival. This inequality would constitute an appalling injustice and
 thus, necessitates a factual verification. Fortunately, we received
@@ -133,7 +133,7 @@ the regressors and the target variable is provided in form of several
 stacked barplots in the right panel of Figure \ref{fig:categories}. They
 graphically indicate differences in the survival rate between multiple
 groups. The white dotted line marks the overall mean survivals and
-facilitates to detect conspicious groups.
+facilitates to detect conspicuous groups.
 
 \begin{figure}[h]
 
@@ -147,12 +147,10 @@ facilitates to detect conspicious groups.
 The graph underlines three provisional findings: (1) Children had a
 higher chance to survive than adults, (2) survival rate diminishes with
 economic class and (3) females were more likely to survive the crash
-than males.
-
-From a first glance the preliminary findings seem to be linked to
-traditional shipping conducts. Findings 1 and 3 mostly follow from the
-``Women and children first'' policy which priorises the lives of women
-and children in life threatening situations. In turn it is not
+than males. From a first glance the preliminary findings seem to be
+linked to traditional shipping conducts. Findings 1 and 3 mostly follow
+from the ``Women and children first'' policy which priorises the lives
+of women and children in life-threatening situations. In turn it is not
 surprising that male passengers reveal a low survival rate of less than
 20\%. Finding (2) would lead into the direction of the presumption about
 inequality among the classes described in the introduction. Thus,
@@ -163,8 +161,8 @@ validating finding 2 is of crucial interest in the next section.
 results}\label{empirical-strategy-and-results}}
 
 In this section we estimate the causal effect of the economic status of
-the cabine on the chances of survival. We start with the simplest form
-of logistic regression model applicable to the data which takes the form
+the cabin on the chances of survival. We start with the simplest form of
+logistic regression model applicable to the data which takes the form
 
 \[P(Survived = 1|x)= G(\beta_o + \beta_1Class1 + \beta_2Class2 + \beta_3Class3) + u\]
 where \(i\) denotes the i-th individual and \(\beta_0\), \(\beta_1\),
@@ -189,7 +187,7 @@ also implies that we can get \(P[Survival=1|x_i]\) greater or less than
 \([0,1]\). Particularly when trying to estimate partial effects for
 unseen combinations of \(x\), this should cause concerns.
 
-Not only the dependent variable is categorical, all explenatory are
+Not only the dependent variable is categorical, all explanatory are
 categorical as well. To account for this paper's purpose, namely to
 investigate the effect of the luxury class on the chances of survival,
 the explanatory variables are converted into three dummy variables. This
@@ -260,14 +258,14 @@ third class or being a crew member reduces the chances of survival
 almost equally compared to the first class passengers. Second class
 members are less likely to survive than first class members but still
 have better chances then the remaining classes. These findings match
-what we see in our preliminary findins in figure \ref{fig:categories} -
+what we see in our preliminary findings in figure \ref{fig:categories} -
 the survival rate of the third class and the crew class are almost the
 same around 25\%, followed by the second class and finally the first
 class, which has the highest survival rate.
 
 To test our hypothesis that being a passenger in the luxury class
 results in the highest survival chances we define the null hypothesis as
-the following. \[H_0 : \beta_i < 0 \text{ for } i =\{1,2,3\}\] We can
+the following. \[H_0 : \beta_i \leq 0 \text{ for } i =\{1,2,3\}\] We can
 reject the hypothesis for all of the estimates on a 99\% confidence
 bound, according to the results in table 1, with the p-values being very
 close to zero. We also test for joint significance of the simple model
@@ -328,7 +326,7 @@ to estimate the effect of class on the survival rate, we force the class
 dummies to be present in the dataset in each submodel and abstain from
 including interaction with one of the class dummies. We collect two
 metrics which are common for binary classification tasks: accuracy and
-kappa statistic.Accuracy is defined as
+kappa statistic. Accuracy is defined as
 \(\frac{\text{Number of correct predictions}}{\text{Total number of predictions}}\).
 The metric can be misleading, particularly when there are class
 imbalances in the outcome. With roughly 30\% of survivors this could be
@@ -367,20 +365,19 @@ same chance on surviving. In other words, if a person is female, there
 is no evidence that being a child boosts the surviving probability even
 more. To the contrary, being a male child does increase the surviving
 chance even beyond the surviving chance of a girl. This could have
-several reasons, such as boys having a better swimming ability or being
-quicker on foot than girls. Compared to the simple model, the class
-variables have changed due to a reduced ommited varible bias. We cannot
-quantify the bias since we do not know the true beta coefficients.
-Because of many variables missing we also suspect the complex model to
-be biased. However, we can dare to make statements about the direction
-of the bias in the simple model with the \(\beta_0\) being downward
-biased, \(\beta_1\) being downward biased, \(\beta_2\) being downward
-biased, and \(\beta_3\) being upward biased. We conclude with a
-likelihood ratio test, to ensure that our complex model performs better
-than the simple.
+several reasons, such as boys having a better swimming ability. Compared
+to the simple model, the class variables have changed due to a reduced
+ommited varible bias. We cannot quantify the bias since we do not know
+the true beta coefficients. Because of many variables missing we also
+suspect the complex model to be biased. However, we can dare to make
+statements about the direction of the bias in the simple model with the
+\(\beta_0\) being downward biased, \(\beta_1\) being downward biased,
+\(\beta_2\) being downward biased, and \(\beta_3\) being upward biased.
+We conclude with a likelihood ratio test, to ensure that our complex
+model performs better than the simple one.
 
 \begin{table}[!htbp] \centering 
-  \caption{Chi-Squared for Model (8)} 
+  \caption{Likelihood ratio test Model (1) vs (8)} 
   \label{} 
 \small 
 \begin{tabular}{@{\extracolsep{5pt}} cccccc} 
@@ -407,7 +404,7 @@ the first class enjoys on its survival chances decreases with economic
 class. However, after controlling for the gender, crew members have the
 second highest probability to survive. Being a child or a female both
 significantly increases the survival chances - indicating that the women
-and children first policy was a successful measure on the titanic. Thus,
+and children first policy was a successful measure on the Titanic. Thus,
 our findings concur with the literature. In consequence, we suggest a
 policy change that makes the Atlantic passage safe for all passengers,
 regardless of class. This could include raising the number of lifeboats
@@ -438,6 +435,12 @@ Frey, Bruno S, David A Savage, and Benno Torgler. 2011. ``Behavior Under
 Extreme Conditions: The \emph{Titanic} Disaster.'' \emph{Journal of
 Economic Perspectives} 25 (1): 209--22.
 \url{https://doi.org/10.1257/jep.25.1.209}.
+
+\leavevmode\hypertarget{ref-frey2010}{}%
+Frey, Bruno S., David A. Savage, and Benno Torgler. 2010. ``Noblesse
+Oblige? Determinants of Survival in a Life-and-Death Situation.''
+\emph{Journal of Economic Behavior \& Organization} 74 (1-2): 1--11.
+\url{https://doi.org/10.1016/j.jebo.2010.02.005}.
 
 \leavevmode\hypertarget{ref-hall1986}{}%
 Hall, Wayne. 1986. ``Social Class and Survival on the S.S. Titanic.''

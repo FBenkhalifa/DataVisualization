@@ -57,5 +57,5 @@ cv_log_reg <- function(.v = 10, .repeats = 1, .vars, .mydata){
   cv_res$n_var <- cv_res$fit  %>% map_int(~coef(.) %>% length(.))
   
   # 10 Return the folds object
-  return(bind_cols(folds = tibble(lst(folds)), cv_res) %>% rename(folds = `lst(folds)`))
+  return(bind_cols(folds = tibble(lst(folds)), cv_res) %>% dplyr::rename(folds = `lst(folds)`))
 }
