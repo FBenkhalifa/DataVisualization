@@ -27,7 +27,6 @@ library(furrr)
 
 library(pander)
 
-
 # I Data preparation -------------------------------------------------------------------------
 
 # Convert array to 2-dimensional format
@@ -133,8 +132,11 @@ grid <- expand.grid(rep(list(0:1), length(all_vars))) %>%
   as_tibble()
 grid
 
-# 3 Prepare the tuning grid to be sent throug cv by setting up parallelization
+# 3 Prepare the tuning grid to be sent through cv by setting up parallelization
 plan(multiprocess)
+
+# Source the function which will be used in the following line
+source("./R/cv_log_reg.R")
 
 # 4 Tune the model via a map call. A 15 fold cv is repeated 10 times for better estimates of the out of sample performance
 # Mapping instead of for-looping allows for parallelization and therefor faster results
@@ -150,15 +152,21 @@ model_metrics$fit[[1]] # Here the fit on the whole dataset (not only the trainin
 model_metrics %>% select(combination, accuracy) # The mean accuracy over the different out of sample performances for a full cv run
 model_metrics %>% select(combination, kap)  # THe mean kappa over a full cv run
 
+# Check p values of simple model
+model_metrics$fit[[1]] %>% tidy
+
 # 6 Save the model for reproducibility
 save(model_metrics, file = "./cv_model/cv_results.rda")
 
 # IV Debugging  ----------------------------------------------------------
 # In order to check how the function works, run the following chunk and step through
 # each line of the function code. Exit debug mode when finished.
-cv_log_reg %>% debugonce()
-cv_log_reg(.vars = c("Class_X3rd", "Class_X2nd", "Class_Crew"), .mydata = mydata_rec)
 
+# Not run
+if(FALSE){
+  cv_log_reg %>% debugonce()
+  cv_log_reg(.vars = c("Class_X3rd", "Class_X2nd", "Class_Crew"), .mydata = mydata_rec)
+}
 
 # V Create result Table ------------------------------------------------------------
 
@@ -181,13 +189,13 @@ model_metrics %>%
 # VI Run model tests -------------------------------------------------------
 
 # 1 Run a one sided anova on the best and the worst models
-model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., type = "text")
+model_metrics$fit[[1]] %>% anova(test = "LRT") %>% as.matrix %>% stargazer(., type = "text")
 model_metrics$fit[[8]] %>% anova(test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
 
 # 2 Run likelihood ratio test on both models
 anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., type = "text")
 
-
+model_metrics$folds[[1]]$preds[[1]] %>% conf_mat(.truth, .pred_class) %>% summary
 # VII Appendix ----------------------------------------------------------------
 # Here we have some chunks we did not include in the paper because of problems with
 # space. But in a longer paper they could be useful.
@@ -197,27 +205,27 @@ anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.ma
 # P(Sex)
 mydata %>% 
   count(Sex, .drop = FALSE) %>% 
-  mutate(freq = n/sum(n)) %>% 
+  mutate("P(Sex)" = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text", title = "P(Sex)")
 
 # P(Age)
 mydata %>% 
   count(Age, .drop = FALSE) %>% 
-  mutate(freq = n/sum(n)) %>% 
+  mutate("P(Age)" = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text", title = "P(Age)")
 
 mydata %>% 
   count(Class, .drop = FALSE) %>% 
-  mutate(freq = n/sum(n)) %>% 
+  mutate("P(Class)" = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text", title = "P(Class)")
 
 # P(Survived)
 mydata %>% 
   count(Survived, .drop = FALSE) %>% 
-  mutate(freq = n/sum(n)) %>% 
+  mutate(freq = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text")
 
@@ -227,14 +235,14 @@ mydata %>%
 # P(Class, Sex)
 mydata %>% 
   count(Class, Sex, .drop = FALSE) %>% 
-  mutate(freq= n/sum(n)) %>% 
+  mutate("P(Class, Sex)"= round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
-  stargazer(type = "text", title = "(Class, Sex)")
+  stargazer(type = "text", title = "P(Class, Sex)")
 
 # P(Class, Age)
 mydata %>% 
   count(Class, Age, .drop = FALSE) %>% 
-  mutate(freq= n/sum(n)) %>% 
+  mutate("P(Class, Age)" = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text", title = "P(Class, Age)")
 
@@ -244,7 +252,7 @@ mydata %>%
 mydata %>% 
   count(Class, Sex, .drop = FALSE) %>% 
   group_by(Class) %>% 
-  mutate(freq_per_class = n/sum(n)) %>% 
+  mutate("P(Sex|Class)" = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text", title = "P(Sex|Class)")
 
@@ -252,8 +260,33 @@ mydata %>%
 mydata %>% 
   count(Class, Sex, .drop = FALSE) %>% 
   group_by(Sex) %>% 
-  mutate(freq_per_Sex = n/sum(n)) %>% 
+  mutate("P(Class|Sex)" = round(n/sum(n), digits = 2)) %>% 
   as.matrix() %>% 
   stargazer(type = "text", title = "P(Class|Sex)")
 
+# P(Class|Sex)
+mydata %>% 
+  count(Sex, Age, .drop = FALSE) %>% 
+  group_by(Age) %>% 
+  mutate("P(Sex|Age)" = round(n/sum(n), digits = 2)) %>% 
+  arrange(Age) %>% 
+  as.matrix() %>% 
+  stargazer(type = "text", title = "P(Sex|Age)")
+
+# P(Class|Sex)
+mydata %>% 
+  count(Sex, Age, .drop = FALSE) %>% 
+  group_by(Age) %>% 
+  mutate("P(Sex|Age)" = round(n/sum(n), digits = 2)) %>% 
+  arrange(Age) %>% 
+  as.matrix() %>% 
+  stargazer(type = "text", title = "P(Sex|Age)")
+
+mydata %>% 
+  count(Age, Class, Sex, .drop = FALSE) %>% 
+  group_by(Class, Age) %>% 
+  mutate("P(Sex|Class, Age)" = round(n/sum(n), digits = 2)) %>% 
+  arrange(Age) %>% 
+  as.matrix() %>% 
+  stargazer(type = "text", title = "P(Sex|Class, Age)")
 

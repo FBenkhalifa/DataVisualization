@@ -1,0 +1,289 @@
+---
+title: Estimating the effect of luxury cabin on the chances to survive the sinking
+  of the Titanic
+author: "Florian Benkhalifa, Camilla Bischofberger, Max Röcker"
+date: "3 5 2020"
+bibliography: DataViz.bib
+output:
+  pdf_document:
+    dev: cairo_pdf
+    keep_tex: true
+    fig_caption: yes
+header-includes:
+   - \usepackage{dcolumn}  
+   - \usepackage{float}  
+   - \usepackage{flafter}  
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, fig.pos = "h", out.extra = "", dev = "cairo_pdf")
+
+library(datasets)
+library(here)
+# Data wrangling
+library(tidyverse)
+library(lubridate)
+library(reshape)
+library(stringi)
+
+# Data viz
+library(plotly)
+library(scales)
+library(ggthemes)
+library(cowplot)
+library(stargazer)
+library(skimr)
+library(ggmosaic)
+library(ggpubr)
+
+# Data presentation
+library(knitr)
+library(stargazer)
+
+# Data analysis
+library(tidymodels)
+library(broom)
+library(glmnet)
+library(rsample)
+library(furrr)
+
+library(here)
+
+
+```
+
+```{r preparation, include = FALSE}
+setwd(here())
+# Convert array to 2-dimensional format
+mydata <- Titanic %>% as_tibble() %>% print(n=50)
+
+# Convert all except n to factors which are easier to handle later on
+mydata <- mydata %>% mutate_at(vars(-n), as.factor) 
+
+# Untable the dbl which makes it easier to use with summarize functions
+mydata <- untable(df = mydata %>% select(-n), 
+                  num = mydata %>% pull(n))
+
+# Prepare
+mydata_rec <-
+  recipe(Survived ~ ., data = mydata) %>% 
+  step_dummy(all_predictors()) %>% 
+  step_interact(terms = ~ starts_with("Sex"):starts_with("Age")) %>% 
+  step_zv(all_predictors()) %>% 
+  prep() %>% 
+  juice()
+
+
+load("./cv_model/cv_results.rda")
+
+```
+
+## Introduction
+
+The purpose of this paper is to assess the effect of the economic status (class) of the cabin on the chances of survival as a passenger on the Titanic. The fate of the R.M.S. Titanic and its passengers has captured the attention of the whole world. There is consensus that the chances of getting the few places in the limited number of lifeboats and surviving the cold waters of the North Atlantic differed among social groups. Remarkably, women rather than men survived the disaster [@hall1986]. This was apparently due to the long time of the sinking (2.6h) that allowed for social norms such as ‘women and children first’ to be established [@frey2011]. However, this did not apply across cabin classes: Eyewitness reports suggest that there was a structural disadvantage and discrimination of third-class passengers [@diekmann2012]. Accordingly, survivors were rather from the upper cabin classes than from lower classes [@dixon2006; @frey2011; @hall1986]. Therefore, ex ante, the effect seems to be clear – the lower the class of a passenger, the smaller the chances for survival. This inequality would constitute an appalling injustice and thus, necessitates a factual verification. Fortunately, we received passenger data from the British Board of Trade that enables us to assess this effect. 
+We perform a thorough analysis in the empirical framework of a logistic regression. We find that the relationship between class and chances of survival is best described by including additional variables and an interaction term. We conclude that it is likely that the effect on the survival rate might be a combination of several factors, with economic status of the cabin being a significant one. Our studies suggest that passengers in the first class had a significant higher chance to sruvive than passengers in the lower classes. The results of this study should inform our struggle for safe passages for everyone and workers rights worldwide.
+
+
+## Data and descriptives
+
+The dataset “Titanic” contains information about the survival status of a person, gender, the economic class and the age of each passenger. All the variables are categorical, with only the economic class having four categories - the remaining are binary. In total there are $2201$ observations in the dataset. A simple summary statistic denoting the histograms of the variables is illustrated in the left panel of figure \ref{fig:categories}. Two imbalances in the histograms are striking: Adults and males are obviously more present on the titanic than children or, respectively, females. Concerning the class variable, crew member are the most prominent category in the dataset followed by the third class.
+Since the purpose of the paper is to investigate the effect of class on the survival rate, a preliminary grasp of the relation between the regressors and the target variable is provided in form of several stacked barplots in the right panel of Figure \ref{fig:categories}. They graphically indicate differences in the survival rate between multiple groups. The white dotted line marks the overall mean survivals and facilitates to detect conspicious groups.
+```{r categories, fig.align="center", echo = FALSE, fig.cap="Descriptive figures"}
+
+# 3 Produce a table which helps to grasp differences within groups more easily
+p1 <- mydata %>%
+  pivot_longer(
+    everything(),
+    names_to = "variable",
+    values_to = "attribute",
+    names_repair = "universal"
+  ) %>% ggplot(aes(x = attribute, group = variable)) +
+  geom_bar(aes(y = (..count..)))+
+  ylab("n") +
+  labs(title = "Histograms per variable") +
+  facet_wrap(~variable, scales = "free_x") +
+  theme_bw() +
+  theme(text = element_text(size=10))
+
+# 4 Compute survival rate which will be included in next plot
+survival_rate <- mydata %>% 
+  count(Survived, .drop = FALSE) %>% 
+  mutate(freq_per_class = n/sum(n))
+
+# 5 Convert data to long format for facet plotting in ggplot
+p2 <- mydata %>% 
+  pivot_longer(-Survived, 
+               names_to = "variable", 
+               values_to = "attribute", 
+               names_repair = "universal") %>% 
+  mutate_if(is.character, as.factor) %>% 
+  ggplot(aes(x = attribute, fill = Survived)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  ylab("Survival Rate") +
+  theme(axis.text.x = element_text(angle=45, hjust=1))+
+  scale_fill_manual(values = c("gray25", "gray")) +
+  geom_hline(yintercept = survival_rate$freq_per_class[2], col = "white", lty = 2, size = 1) +
+  facet_wrap(~variable, scales = "free_x") +
+  labs(title = "Survival outcome per category") +
+  theme_bw()+
+  theme(legend.position="bottom", text = element_text(size=10))
+
+## !!!!More descriptive stats can be found in the appendix!!!!
+
+ggarrange(p1, p2, nrow = 1, widths = c(1, 1.3))
+
+```
+The graph underlines three provisional findings: 
+(1) Children had a higher chance to survive than adults, 
+(2) survival rate diminishes with economic class and 
+(3) females were more likely to survive the crash than males. 
+
+From a first glance the preliminary findings seem to be linked to traditional shipping conducts. Findings 1 and 3 mostly follow from the “Women and children first” policy which priorises the lives of women and children in life threatening situations. In turn it is not surprising that male passengers reveal a low survival rate of less than 20%. Finding (2) would lead into the direction of the presumption about inequality among the classes described in the introduction. Thus, validating finding 2 is of crucial interest in the next section.
+
+## Empirical strategy and results
+
+In this section we estimate the causal effect of the economic status of the cabine on the chances of survival. We start with the simplest form of logistic regression model applicable to the data which takes the form
+
+$$P(Survived = 1|x)= G(\beta_o + \beta_1Class1 + \beta_2Class2 + \beta_3Class3) + u$$ 
+where $i$ denotes the i-th individual and $\beta_0$, $\beta_1$, $\beta_2$ and $\beta_3$ are the unknown coefficients to be estimated. $u$ is the error of the regression and remains unobserved. Here, the variable $Survived$ is a binary variable indicating whether a person survived $(Survived = 1)$ or not. The role of $G$, which is the logit transformation, is to keep the probability $P(Survived = 1)$ in between zero and one.
+The effect of interest is captured by the beta coefficients which denote the impact of log odds when the survival probability of survival of a passenger belonging to the luxury class is compared to a lower one. 
+
+We abstain from constructing this model via a linear relationship, as assumed by OLS, since for some range of the covariates the estimated conditional probability may fall outside of $[0,1]$. Clearly, such estimations violate the premise of probability functions. Further, a linear probability model implies that a ceteris paribus increase in $x_i$ always corresponds with a constant change of $P[Survival=1|x_i]$ regardless of the initial value of $x_i$. This also implies that we can get $P[Survival=1|x_i]$ greater or less than $[0,1]$. Particularly when trying to estimate partial effects for unseen combinations of $x$, this should cause concerns.
+
+Not only the dependent variable is categorical, all explenatory are categorical as well. To account for this paper's purpose, namely to investigate the effect of the luxury class on the chances of survival, the explanatory variables are converted into three dummy variables. This allows to directly compare between luxury and lower classes. In the simple model, we have chosen to have the first class as base group. The effect of being part of the first class is depicted in $\beta_0$. Consequently, $\beta_1$, $\beta_2$ and $\beta_3$ depict the increase or decrease of the survival probabilities in comparison with the base group and the p-values denote if this difference is indeed significant.
+
+The estimation results of this simple model are displayed in the first column of table 1. Table 1 contains all models we investigated in the wake of our cross validation framework which will be explained later.
+```{r cv, results = 'asis', fig.pos = "H"}
+# Create table via stargazer, tehr
+cv_results <-  model_metrics %>% select( c(accuracy, kap)) %>% imap(~c(paste0("cv.",.y), round(.x, digits = 3)))
+
+# Create the table
+model_metrics %>% 
+  pull(fit) %>% 
+  exec(stargazer, ., title = "Results", align = TRUE,
+       omit.stat=c("f", "ser"), order=c("Constant",
+                                        "Class_X2nd",
+                                        "Class_X3rd",
+                                        "Class_Crew",
+                                        "Sex_Male",
+                                        "Age_Child",
+                                        "Sex_Male_x_Age_Child"),
+       add.lines= cv_results,
+       font.size = "small",
+       column.sep.width = "-24pt",  header=FALSE,  table.placement = "t",  notes = "Standard deviations in parentheses")
+```
+The constant $\beta_0$ is the only estimate which is positive, all other coefficients are negative. This suggests that the first class has the highest chance of survival compared to the other classes. Being part of the crew class seems to decrease survival chances the most. A similar impact can be found for the third class, so being a passenger in the third class or being a crew member reduces the chances of survival almost equally compared to the first class passengers. Second class members are less likely to survive than first class members but still have better chances then the remaining classes.
+These findings match what we see in our preliminary findins in figure \ref{fig:categories} - the survival rate of the third class and the crew class are almost the same around 25%, followed by the second class and finally the first class, which has the highest survival rate. 
+
+To test our hypothesis that being a passenger in the luxury class results in the highest survival chances we define the null hypothesis as the following.
+$$H_0 : \beta_i < 0 \text{ for } i =\{1,2,3\}$$
+We can reject the hypothesis for all of the estimates on a 99% confidence bound, according to the results in table 1, with the p-values being very close to zero. We also test for joint significance of the simple model via a ANOVA Chi-Square.
+```{r, results = 'asis', echo = FALSE}
+model_metrics$fit[[1]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (1)", font.size = "small", header=FALSE, table.placement = "H")
+
+```
+It turns out that adding the variables sequentially to the model indeed improves the model and hence we can conclude that the coefficients are joint significant.
+
+We now perform the model diagnostics. The important questions are whether the estimates are credible and whether the assumptions behind the simple model hold. In order to interpret the variable in a causal manner, this simple randomized model works under two main assumptions: First, that on average the error is zero $(E[u_i = 0])$ and second, that there is randomization $(x \bot u)$ and thus, no correlation between our error term and the Class variables (exogeneity). Exogeneity can be highly questioned, since the error term might contain the other variables gender and age which are observed in the dataset. Moreover, factors contained in the error term could be body weight, body fat, physical condition, swimming abilities, intelligence, clothing, number of family members on the ship, location in the ship or the distribution of flotsam. Those variables could simultaneously affect the class variables and the outcome.
+Our data doesn’t come from a randomized experiment but we could think of a randomized experiment in order to extract the effect of class. Therefore, we would randomly pick 1000 people representative for passengers who prefer to travel by a liner. For instance, past passenger on different liners across the world could be pooled into a dataset, and 1000 people are randomly chosen and informed that they won a free a cruise in a lottery. Once they arrive on a representative liner, they are randomly assigned to different cabin classes. Eventually the ship is forced to sink in the Atlantic. Fortunately, this experiment will most probably never take place.
+
+As we have binary variables, there is no possibility to add polynomials of higher degree to our model. In order to choose a more complex model, we include more dummy variables as well as interaction terms between them. We then perform a feature selection procedure by repeating a 15 fold cross validation 10 times for each possible combination of dummy variables and interaction terms. Since the purpose of the paper still is to estimate the effect of class on the survival rate, we force the class dummies to be present in the dataset in each submodel and abstain from including interaction with one of the class dummies. We collect two metrics which are common for binary classification tasks: accuracy and kappa statistic.Accuracy is defined as $\frac{\text{Number of correct predictions}}{\text{Total number of predictions}}$. The metric can be misleading, particularly when there are class imbalances in the outcome. With roughly 30% of survivors this could be an issue. To account for this problem we also include the kappa statistic which measures the performance of a classifier independent of class imbalances. Both values are displayed in table 1. Obviously model (8), where all dummies and interactions are included, performs best. The worst performance was achieved by the simple model (1).
+Table 1 gives interesting insights on the size and direction of the bias. In models, where Sex is not included, as for instance (1), (3) and (4), the class crew has a remarkably more negative impact on surviving, compared to the other models. This can be explained by looking at $P(Sex = Male|Class = Crew) = 0.97$. The number indicates that part of the lower surviving chances of the crew members can be explained by the overproportional share of men in that group. In all the models, the first class remains the class with the higher survival chances.
+
+We now turn our focus on a more thorough analysis of model (8). All dummies and interaction terms are included and a female, adult person from the first class was chosen as base group. The inclusion of all available variables does not only increase the accuracy and kappa statistic, but also renders the model's exogeneity assumption more credible, although variables such as intelligence, muscle strength, etc, surely still impose a bias on the estimates. All estimates except Age_child are significant on 99% confidence level. Interestingly, some coefficients change remarkably in the complex model. As already mentionned before, the crew class now has a higher surviving strategy, even surpassing the second class. So being part of the crew actually poses the second best circumstance on surviving besides being in the luxury class. Being male is obviously the highest threat for surviving with a coefficient exceeding -2.6. 
+
+It is interesting to further investigate the insignificance of Age_Child. It implies, that either being female or child result in the same chance on surviving. In other words, if a person is female, there is no evidence that being a child boosts the surviving probability even more. To the contrary, being a male child does increase the surviving chance even beyond the surviving chance of a girl. This could have several reasons, such as boys having a better swimming ability or being quicker on foot than girls. Compared to the simple model, the class variables have changed due to a reduced ommited varible bias. We cannot quantify the bias since we do not know the true beta coefficients. Because of many variables missing we also suspect the complex model to be biased. However, we can dare to make statements about the direction of the bias in the simple model with the $\beta_0$ being downward biased, $\beta_1$ being downward biased, $\beta_2$ being downward biased, and $\beta_3$ being upward biased.
+We conclude with a likelihood ratio test, to ensure that our complex model performs better than the simple.
+
+```{r, results = 'asis', echo = FALSE,  fig.pos = "H"}
+anova(model_metrics$fit[[1]], model_metrics$fit[[8]],  test = "Chisq") %>% as.matrix %>% stargazer(., title = "Likelihood ratio test Model (1) vs (8)", font.size = "small", header=FALSE)
+
+```
+In the table, the first model denotes the simple model which is compared to the more complex one. The p-value is highly significant which means that our complex model outperforms the simple model.
+
+
+## Conclusion
+
+In summary, the economic status of the cabin (class) appears to have an effect on the survival chances. The positive effect which a passenger in the first class enjoys on its survival chances decreases with economic class. However, after controlling for the gender, crew members have the second highest probability to survive. Being a child or a female both significantly increases the survival chances - indicating that the women and children first policy was a successful measure on the titanic. 
+Thus, our findings concur with the literature. In consequence, we suggest a policy change that makes the Atlantic passage safe for all passengers, regardless of class. This could include raising the number of lifeboats and life vests to a number that reflects the passenger numbers and ensuring that lifeboats can easily be accessed from different cabin class areas.
+
+\newpage
+# References
+
+<div id="refs"></div>
+
+\newpage
+# Appendix
+
+```{r,  results = 'asis', echo = FALSE}
+# P(Sex)
+mydata %>% 
+  count(Sex, .drop = FALSE) %>% 
+  mutate("P(Sex)" = round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Sex)", header = FALSE)
+
+# P(Age)
+mydata %>% 
+  count(Age, .drop = FALSE) %>% 
+  mutate("P(Age)" = round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Age)", header = FALSE)
+
+mydata %>% 
+  count(Class, .drop = FALSE) %>% 
+  mutate("P(Class)" = round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Class)", header = FALSE)
+
+## B Bivariate Distributions
+
+# P(Class, Sex)
+mydata %>% 
+  count(Class, Sex, .drop = FALSE) %>% 
+  mutate("P(Class, Sex)"= round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Class, Sex)", header = FALSE)
+
+# P(Class, Age)
+mydata %>% 
+  count(Class, Age, .drop = FALSE) %>% 
+  mutate("P(Class, Age)" = round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Class, Age)", header = FALSE)
+
+## C Conditinale Distributions
+
+# P(Sex|Class)
+mydata %>% 
+  count(Class, Sex, .drop = FALSE) %>% 
+  group_by(Class) %>% 
+  mutate("P(Sex|Class)" = round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Sex|Class)", header = FALSE)
+
+# P(Class|Sex)
+mydata %>% 
+  count(Class, Sex, .drop = FALSE) %>% 
+  group_by(Sex) %>% 
+  mutate("P(Class|Sex)" = round(n/sum(n), digits = 2)) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Class|Sex)", header = FALSE)
+
+# P(Class|Sex)
+mydata %>% 
+  count(Sex, Age, .drop = FALSE) %>% 
+  group_by(Age) %>% 
+  mutate("P(Sex|Age)" = round(n/sum(n), digits = 2)) %>% 
+  arrange(Age) %>% 
+  as.matrix() %>% 
+  stargazer(title = "P(Sex|Age)", header = FALSE)
+
+model_metrics$fit[[8]] %>% anova(test = "Chisq")%>% as.matrix %>% stargazer(., title = "Chi-Squared for Model (1)", font.size = "small", header=FALSE)
+
+```
+
+```
+
